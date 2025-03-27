@@ -48,38 +48,47 @@ app.use(express.json());
 app.use(authorize); // Apply authorization middleware
 app.use(enforceJson); // Apply content-type middleware
 
-// Define Schema & Model
-const Product = mongoose.models.Product || mongoose.model('mpocket', new mongoose.Schema({
-    mobile: { type: String, required: true, unique: true }, 
+// Define Schema & Model (Only `mobile` is unique)
+const ProductSchema = new mongoose.Schema({
+    mobile: { type: String, required: true, unique: true },  // Only `mobile` is unique
     name: { type: String, required: true },
     dob: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
+    email: { type: String, required: true },   // Email allows duplicates
     employeeType: { type: String, required: true },
-    pancard: { type: String, required: true, unique: true }
-}, { strict: false }));
+    pancard: { type: String, required: true }  // PAN card allows duplicates
+}, { strict: false });
 
-// Create Product
+const Product = mongoose.models.Product || mongoose.model('mpocket', ProductSchema);
+
+// Handle duplicate mobile errors
+ProductSchema.post('save', function (error, doc, next) {
+    if (error.name === 'MongoServerError' && error.code === 11000) {
+        next(new Error("❌ Duplicate entry: Mobile number already exists."));
+    } else {
+        next(error);
+    }
+});
+
+// Create Product (Check only `mobile` for duplicates)
 app.post('/products', async (req, res) => {
     await connectDB();
     try {
-        const { mobile, email, pancard } = req.body;
+        const { mobile } = req.body;
 
-        // Check if a product already exists
-        const existingProduct = await Product.findOne({
-            $or: [{ mobile }, { email }, { pancard }]
-        });
+        // Check if `mobile` already exists
+        const existingProduct = await Product.findOne({ mobile });
 
         if (existingProduct) {
-            return res.status(400).json({ message: "❌ Duplicate entry: Mobile, Email, or PAN already exists" });
+            return res.status(400).json({ message: "❌ Duplicate entry: Mobile number already exists." });
         }
 
         const product = await Product.create(req.body);
-        res.status(201).json({ message: "✅ Product created", product });
+        res.status(201).json({ message: "✅ lead created", product });
     } catch (error) {
         if (error.code === 11000) {
             return res.status(400).json({ message: "❌ Duplicate key error", error });
         }
-        res.status(500).json({ message: "❌ Error creating product", error: error.message });
+        res.status(500).json({ message: "❌ Error creating lead", error: error.message });
     }
 });
 
